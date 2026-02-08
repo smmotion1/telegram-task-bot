@@ -913,6 +913,14 @@ async def cmd_task(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         )
         return
 
+    if sub.startswith("doneallall"):
+        if not await is_admin(update, context):
+            await update.message.reply_text("🛡️ Only admins can close tasks.")
+            return
+        count = mark_all_tasks_done_global(update.effective_chat.id)
+        await update.message.reply_text(f"✅ Completed {count} task(s) across all topics.")
+        return
+
     if sub.startswith("doneall"):
         if not await is_admin(update, context):
             await update.message.reply_text("🛡️ Only admins can close tasks.")
@@ -920,14 +928,6 @@ async def cmd_task(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         thread_id = update.effective_message.message_thread_id if update.effective_message else None
         count = mark_all_tasks_done(update.effective_chat.id, thread_id)
         await update.message.reply_text(f"✅ Completed {count} task(s).")
-        return
-
-    if sub.startswith("doneallall"):
-        if not await is_admin(update, context):
-            await update.message.reply_text("🛡️ Only admins can close tasks.")
-            return
-        count = mark_all_tasks_done_global(update.effective_chat.id)
-        await update.message.reply_text(f"✅ Completed {count} task(s) across all topics.")
         return
 
     if sub.startswith("done"):
