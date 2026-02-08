@@ -518,6 +518,27 @@ def extract_client_name(subject: str, body: str) -> Optional[str]:
 
 
 def extract_due_datetime(body: str, subject: str) -> Optional[datetime]:
+    combined = f"{subject}\n{body}"
+    # Strong pattern: "is due Feb 11, 2026"
+    m = re.search(r"(?i)is due\s+([A-Za-z]{3,9}\s+\d{1,2},\s*\d{4})", combined)
+    if m:
+        try:
+            dt = date_parser.parse(m.group(1))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=TZ)
+            return dt
+        except (ValueError, TypeError):
+            pass
+    # Fallback: "due Feb 11, 2026"
+    m = re.search(r"(?i)due\s+([A-Za-z]{3,9}\s+\d{1,2},\s*\d{4})", combined)
+    if m:
+        try:
+            dt = date_parser.parse(m.group(1))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=TZ)
+            return dt
+        except (ValueError, TypeError):
+            pass
     candidate_lines = []
     for line in body.splitlines():
         if re.search(r"(?i)due|deliver|delivery|deadline", line):
