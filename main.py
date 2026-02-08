@@ -194,6 +194,15 @@ def mark_all_tasks_done(chat_id: int, thread_id: Optional[int]) -> int:
         return cur.rowcount
 
 
+def mark_all_tasks_done_global(chat_id: int) -> int:
+    with get_db() as conn:
+        cur = conn.execute(
+            "UPDATE tasks SET status = 'done' WHERE chat_id = ? AND status != 'done'",
+            (chat_id,),
+        )
+        return cur.rowcount
+
+
 def list_open_tasks(chat_id: int) -> list[Task]:
     with get_db() as conn:
         rows = conn.execute(
@@ -762,6 +771,7 @@ async def cmd_task(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             "/task view <id>\n"
             "/task done <id>\n"
             "/task doneall\n"
+            "/task doneallall\n"
             "/task submit <id>\n"
             "/task find \"keyword\"\n"
             "/task status\n"
@@ -910,6 +920,14 @@ async def cmd_task(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         thread_id = update.effective_message.message_thread_id if update.effective_message else None
         count = mark_all_tasks_done(update.effective_chat.id, thread_id)
         await update.message.reply_text(f"✅ Completed {count} task(s).")
+        return
+
+    if sub.startswith("doneallall"):
+        if not await is_admin(update, context):
+            await update.message.reply_text("🛡️ Only admins can close tasks.")
+            return
+        count = mark_all_tasks_done_global(update.effective_chat.id)
+        await update.message.reply_text(f"✅ Completed {count} task(s) across all topics.")
         return
 
     if sub.startswith("done"):
