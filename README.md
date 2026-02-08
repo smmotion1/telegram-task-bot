@@ -38,6 +38,11 @@ python main.py
   - `/task setowner` (admin only)
   - `/task setassignee @user` (admin only)
 
+## Gmail Webhook (Optional)
+Use a Google Apps Script to forward Fiverr emails to the bot.
+- Set `GMAIL_WEBHOOK_TOKEN` in `.env` / Render env.
+- Endpoint: `POST /gmail/inbound` with JSON `{ "subject": "...", "body": "..." }`
+
 ## Commands
 - `/task add "Title" @user YYYY-MM-DD HH:MM`
 - `/task list`

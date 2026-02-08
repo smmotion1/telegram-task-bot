@@ -25,6 +25,7 @@ TZ = ZoneInfo(os.getenv("BOT_TIMEZONE", "America/Los_Angeles"))
 HTTP_PORT = int(os.getenv("PORT", "8000"))
 MAILGUN_SIGNING_KEY = os.getenv("MAILGUN_SIGNING_KEY", "")
 MAILGUN_ALLOWED_SENDER = os.getenv("MAILGUN_ALLOWED_SENDER", "fiverr.com")
+GMAIL_WEBHOOK_TOKEN = os.getenv("GMAIL_WEBHOOK_TOKEN", "")
 
 
 @dataclass
@@ -493,6 +494,7 @@ def extract_client_name(subject: str, body: str) -> Optional[str]:
     patterns = [
         r"(?i)order from[:\-]\s*(.+)",
         r"(?i)you received an order from\s+(.+)",
+        r"(?i)you just received an order from\s+(.+)",
         r"(?i)buyer[:\-]\s*(.+)",
         r"(?i)client[:\-]\s*(.+)",
         r"(?i)from[:\-]\s*(.+)",
@@ -504,10 +506,14 @@ def extract_client_name(subject: str, body: str) -> Optional[str]:
         for pat in patterns:
             m = re.search(pat, line)
             if m:
-                return m.group(1).strip()
+                name = m.group(1).strip()
+                name = re.sub(r"[!.:\s]+$", "", name)
+                return name
     m = re.search(r"(?i)from\s+(.+)", subject or "")
     if m:
-        return m.group(1).strip()
+        name = m.group(1).strip()
+        name = re.sub(r"[!.:\s]+$", "", name)
+        return name
     return None
 
 
@@ -530,7 +536,7 @@ def extract_due_datetime(body: str, subject: str) -> Optional[datetime]:
 
 
 def extract_order_id(text: str) -> Optional[str]:
-    m = re.search(r"#(\d{5,})", text)
+    m = re.search(r"#([A-Za-z0-9]{6,})", text)
     return m.group(1) if m else None
 
 
@@ -561,10 +567,14 @@ async def handle_mailgun_inbound(request: web.Request, application: Application)
 
     subject = data.get("subject", "") or ""
     body = data.get("stripped-text", "") or data.get("body-plain", "") or ""
+    await process_inbound_order(application, subject, body, source="Mailgun")
+    return web.Response(status=200, text="ok")
 
+
+async def process_inbound_order(application: Application, subject: str, body: str, source: str) -> None:
     chat_id = get_setting("general_chat_id")
     if not chat_id:
-        return web.Response(status=200, text="no chat configured")
+        return
     chat_id_int = int(chat_id)
 
     owner_id = get_setting("owner_user_id")
@@ -572,20 +582,20 @@ async def handle_mailgun_inbound(request: web.Request, application: Application)
     if not owner_id:
         await application.bot.send_message(
             chat_id=chat_id_int,
-            text="⚠️ Mailgun order received, but owner/assignee is not set.\n"
+            text=f"⚠️ {source} order received, but owner is not set.\n"
                  "Run /task setowner.",
         )
-        return web.Response(status=200, text="missing config")
+        return
 
     client_name = extract_client_name(subject, body) or "Fiverr Client"
     due = extract_due_datetime(body, subject)
     if not due:
         await application.bot.send_message(
             chat_id=chat_id_int,
-            text="⚠️ Mailgun order received, but I couldn't parse the due date.\n"
+            text=f"⚠️ {source} order received, but I couldn't parse the due date.\n"
                  "Please create the task manually.",
         )
-        return web.Response(status=200, text="no due date")
+        return
 
     deadline_local = (due - timedelta(days=1)).astimezone(TZ)
     deadline_utc = deadline_local.astimezone(ZoneInfo("UTC"))
@@ -610,7 +620,7 @@ async def handle_mailgun_inbound(request: web.Request, application: Application)
         await application.bot.send_message(
             chat_id=chat_id_int,
             message_thread_id=thread_id,
-            text=f"🟡 Task #{task_id} created from Fiverr email.\n"
+            text=f"🟡 Task #{task_id} created from {source}.\n"
                  f"👤 Unassigned | ⏰ {format_deadline_local(task.deadline_utc)}",
         )
         prompt = await application.bot.send_message(
@@ -626,12 +636,29 @@ async def handle_mailgun_inbound(request: web.Request, application: Application)
             prompt_message_id=prompt.message_id,
         )
 
+
+async def handle_gmail_webhook(request: web.Request, application: Application) -> web.Response:
+    if not GMAIL_WEBHOOK_TOKEN:
+        return web.Response(status=403, text="missing token")
+    token = request.headers.get("X-Webhook-Token") or request.query.get("token", "")
+    if token != GMAIL_WEBHOOK_TOKEN:
+        return web.Response(status=403, text="invalid token")
+
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+
+    subject = payload.get("subject", "") or ""
+    body = payload.get("body", "") or payload.get("text", "") or ""
+    await process_inbound_order(application, subject, body, source="Gmail")
     return web.Response(status=200, text="ok")
 
 
 async def start_webserver(application: Application) -> None:
     web_app = web.Application()
     web_app.router.add_post("/mailgun/inbound", lambda request: handle_mailgun_inbound(request, application))
+    web_app.router.add_post("/gmail/inbound", lambda request: handle_gmail_webhook(request, application))
     runner = web.AppRunner(web_app)
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", HTTP_PORT)
