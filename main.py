@@ -495,6 +495,7 @@ def extract_client_name(subject: str, body: str) -> Optional[str]:
         r"(?i)order from[:\-]\s*(.+)",
         r"(?i)you received an order from\s+(.+)",
         r"(?i)you just received an order from\s+(.+)",
+        r"(?i)you'?ve received an order from\s+(.+)",
         r"(?i)buyer[:\-]\s*(.+)",
         r"(?i)client[:\-]\s*(.+)",
         r"(?i)from[:\-]\s*(.+)",
