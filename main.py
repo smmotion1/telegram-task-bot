@@ -799,29 +799,30 @@ async def cmd_task(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         )
         return
 
-    if sub.startswith("list"):
-        # /task list => current topic only, /task listall => all
-        if sub.startswith("listall"):
-            tasks = list_open_tasks(update.effective_chat.id)
-        else:
-            thread_id = update.effective_message.message_thread_id if update.effective_message else None
-            tasks = list_open_tasks_by_thread(update.effective_chat.id, thread_id)
+    if sub.startswith("listall"):
+        tasks = list_open_tasks(update.effective_chat.id)
         if not tasks:
             await update.message.reply_text("📭 No open tasks.")
             return
+        lines = [
+            f"{status_emoji(t.status)} #{t.id} — {t.title} ({status_label(t.status)})"
+            for t in tasks
+        ]
+        await update.message.reply_text("🗂 All open tasks:\n" + "\n".join(lines))
+        return
 
-        if sub.startswith("listall"):
-            lines = [
-                f"{status_emoji(t.status)} #{t.id} — {t.title} ({status_label(t.status)})"
-                for t in tasks
-            ]
-            await update.message.reply_text("🗂 All open tasks:\n" + "\n".join(lines))
-        else:
-            lines = [
-                f"{status_emoji(t.status)} #{t.id} — {t.title} (Due: {t.deadline_utc.astimezone(TZ).strftime('%b %d')})"
-                for t in tasks
-            ]
-            await update.message.reply_text("📋 Open tasks in this topic:\n" + "\n".join(lines))
+    if sub.startswith("list"):
+        # /task list => current topic only
+        thread_id = update.effective_message.message_thread_id if update.effective_message else None
+        tasks = list_open_tasks_by_thread(update.effective_chat.id, thread_id)
+        if not tasks:
+            await update.message.reply_text("📭 No open tasks.")
+            return
+        lines = [
+            f"{status_emoji(t.status)} #{t.id} — {t.title} (Due: {t.deadline_utc.astimezone(TZ).strftime('%b %d')})"
+            for t in tasks
+        ]
+        await update.message.reply_text("📋 Open tasks in this topic:\n" + "\n".join(lines))
         return
 
     if sub.startswith("find"):
