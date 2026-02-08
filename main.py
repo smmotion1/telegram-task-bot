@@ -277,6 +277,31 @@ def status_label(status: str) -> str:
     }.get(status, "Assigned")
 
 
+def split_message(text: str, max_len: int = 3800) -> list[str]:
+    if len(text) <= max_len:
+        return [text]
+    parts = []
+    current = []
+    current_len = 0
+    for line in text.splitlines():
+        line_len = len(line) + 1
+        if current_len + line_len > max_len and current:
+            parts.append("\n".join(current))
+            current = [line]
+            current_len = line_len
+        else:
+            current.append(line)
+            current_len += line_len
+    if current:
+        parts.append("\n".join(current))
+    return parts
+
+
+async def send_long_message(chat_id: int, text: str, bot, thread_id: Optional[int] = None) -> None:
+    for part in split_message(text):
+        await bot.send_message(chat_id=chat_id, text=part, message_thread_id=thread_id)
+
+
 def set_task_status(task_id: int, chat_id: int, status: str) -> None:
     with get_db() as conn:
         conn.execute(
@@ -808,7 +833,12 @@ async def cmd_task(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             f"{status_emoji(t.status)} #{t.id} — {t.title} ({status_label(t.status)})"
             for t in tasks
         ]
-        await update.message.reply_text("🗂 All open tasks:\n" + "\n".join(lines))
+        await send_long_message(
+            update.effective_chat.id,
+            "🗂 All open tasks:\n" + "\n".join(lines),
+            context.bot,
+            update.effective_message.message_thread_id if update.effective_message else None,
+        )
         return
 
     if sub.startswith("list"):
@@ -822,7 +852,12 @@ async def cmd_task(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             f"{status_emoji(t.status)} #{t.id} — {t.title} (Due: {t.deadline_utc.astimezone(TZ).strftime('%b %d')})"
             for t in tasks
         ]
-        await update.message.reply_text("📋 Open tasks in this topic:\n" + "\n".join(lines))
+        await send_long_message(
+            update.effective_chat.id,
+            "📋 Open tasks in this topic:\n" + "\n".join(lines),
+            context.bot,
+            update.effective_message.message_thread_id if update.effective_message else None,
+        )
         return
 
     if sub.startswith("find"):
@@ -840,7 +875,12 @@ async def cmd_task(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             f"{status_emoji(t.status)} #{t.id} — {t.title} ({status_label(t.status)})"
             for t in tasks
         ]
-        await update.message.reply_text("Matches:\n" + "\n".join(lines))
+        await send_long_message(
+            update.effective_chat.id,
+            "Matches:\n" + "\n".join(lines),
+            context.bot,
+            update.effective_message.message_thread_id if update.effective_message else None,
+        )
         return
 
     if sub.startswith("view"):
